@@ -1,0 +1,1184 @@
+{
+  "name": "Telegram Personal Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "2fdce924-1f28-4696-a074-2fbe6d128627",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1760,
+        -272
+      ],
+      "webhookId": "telegram-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "PbuIcC4sEEC8HpvA",
+          "name": "n8n_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "check-text",
+                    "leftValue": "={{ $json.message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "check-voice",
+                    "leftValue": "={{ $json.message.voice }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Voice"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7f656cae-91a5-45a9-b0a1-e11ab0810696",
+      "name": "Check Data Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1536,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "additionalFields": {}
+      },
+      "id": "fe7dc6c6-aa0b-4735-9c35-46896aeb7acd",
+      "name": "Download Voice Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1312,
+        -200
+      ],
+      "webhookId": "telegram-download-webhook-001",
+      "credentials": {
+        "telegramApi": {
+          "id": "rnOXrEYVDjvot6Kz",
+          "name": "Web Search Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "combine-text-001",
+              "name": "userMessage",
+              "value": "={{ $('Telegram Trigger').item.json.message.text || $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "user-id-001",
+              "name": "userId",
+              "value": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+              "type": "string"
+            },
+            {
+              "id": "chat-id-001",
+              "name": "chatId",
+              "value": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5760e598-f7a8-4ffa-aa12-698e7f83b317",
+      "name": "Prepare Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -864,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "tableName": "n8n_chat_histories_new",
+        "contextWindowLength": 20
+      },
+      "id": "7e910e07-9af0-4a3c-8b75-cd145fe59c37",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -512,
+        32
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "xoJErAB2RptcDncp",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Finance tracking agent for managing expenses",
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Prompt__User_Message_', `The user query about finances/expenses`, 'string') }}",
+        "options": {
+          "systemMessage": "=You are a finance tracking assistant. Current date: {{ $now.format('YYYY-MM-DD') }}\n\n## ⚠️ YOU HANDLE ALL EXPENSE OPERATIONS\n\nYou are the ONLY agent that logs expenses. When user mentions spending money, YOU handle it.\n\nTriggers:\n- \"I spent [amount]\"\n- \"Bought [item] for [amount]\"  \n- \"Paid [amount]\"\n- \"[amount] for [item]\"\n- Any expense mention\n\n## YOUR TOOLS\n\nYou have access to exactly TWO Google Sheets tools:\n\n1. **\"Append row in sheet in Google Sheets\"** \n   - Use this to ADD new expenses\n   - Adds a new row to the sheet\n\n2. **\"Get row(s) in sheet in Google Sheets\"**\n   - Use this to VIEW all expenses\n   - Retrieves all rows from the sheet\n\nYou also have:\n3. **Calculator** (calculate totals and summaries)\n\nThe Google Sheet has these columns:\n- Date (Column A)\n- Description (Column B)\n- Amount (Column C)\n\n## ⚠️ CRITICAL: ALWAYS USE TOOLS\n\nYou MUST call the Google Sheets tools for EVERY operation. NEVER make up responses.\n\nIf you do not call a tool, you MUST return:\n\"❌ ERROR: Tool not called. Cannot confirm operation.\"\n\n## ⚠️ CRITICAL: VERIFY TOOL RESPONSES\n\nAfter calling ANY tool:\n1. WAIT for response\n2. CHECK if tool actually succeeded\n3. VERIFY response shows success (not error)\n4. ONLY THEN confirm to user\n\n**DO NOT say success if tool failed or you're unsure.**\n\nIf tool response is unclear or shows error:\n→ Return: \"❌ ERROR: Could not complete operation\"\n\nIf you're not 100% certain tool succeeded:\n→ Return: \"❌ ERROR: Could not confirm operation succeeded\"\n\n## OPERATION 1: ADD EXPENSE\n\nTrigger: \"I spent\", \"add expense\", \"bought\", \"paid\"\n\n**MANDATORY WORKFLOW:**\n```\nStep 1: CALL \"Append row in sheet in Google Sheets\"\n  Tool: Append row in sheet in Google Sheets\n  Parameters:\n  - Date: \"YYYY-MM-DD\" (today if not specified)\n  - Description: \"[what was purchased/paid for]\"\n  - Amount: \"[number only, no currency symbol]\"\n\nStep 2: WAIT for tool response\n\nStep 3: VERIFY tool response\n  - Check if \"Append row in sheet\" tool returned success\n  - Check if row was actually added\n  - Do NOT assume success\n\nStep 4: CHECK response\n  - If tool response shows SUCCESS → \"✅ Expense logged: ₹[amount] for [description]\"\n  - If tool response shows ERROR → \"❌ ERROR: Failed to log expense. [error message]\"\n  - If NO response from tool → \"❌ ERROR: Tool did not execute\"\n\n⚠️ CRITICAL: NEVER say \"logged\" or \"✅\" unless \"Append row\" tool confirms success!\n```\n\n**Response Verification:**\n```\nAfter calling \"Append row in sheet in Google Sheets\" tool:\n1. Did tool execute? (got a response)\n2. Does response indicate success? (no errors)\n3. Was row actually added? (confirmation in response)\n\nIf ANY check fails → Return error, NOT success\n```\n\n**Examples:**\n```\nUser: \"I spent 500 on lunch\"\n\nStep 1: Extract info\n  - Date: \"2024-01-05\" (today)\n  - Description: \"lunch\"\n  - Amount: \"500\"\n\nStep 2: CALL \"Append row in sheet in Google Sheets\"\n  Date: \"2024-01-05\"\n  Description: \"lunch\"\n  Amount: \"500\"\n\nStep 3: WAIT for response\n\nStep 4: VERIFY response from \"Append row in sheet in Google Sheets\"\n  - Check if tool returned data\n  - Check if no errors\n  \nStep 5: If verified success\n  \"✅ Expense logged: ₹500 for lunch on Jan 5\"\n  \nStep 5: If tool failed\n  \"❌ ERROR: Failed to log expense. Please try again.\"\n```\n\n```\nUser: \"Bought groceries for 2000 yesterday\"\n\nStep 1: Extract info\n  - Date: \"2024-01-04\" (yesterday)\n  - Description: \"groceries\"\n  - Amount: \"2000\"\n\nStep 2: CALL \"Append row in sheet in Google Sheets\"\n\nStep 3: WAIT for response\n\nStep 4: VERIFY success before confirming\n\nStep 5: Only if tool confirms\n  \"✅ Expense logged: ₹2000 for groceries on Jan 4\"\n```\n\n⚠️ **CRITICAL VERIFICATION RULE:**\nIf you're unsure whether \"Append row in sheet in Google Sheets\" tool succeeded, you MUST return error:\n\"❌ ERROR: Could not confirm expense was logged\"\n\nNEVER say success if you're not 100% certain the tool succeeded.\n\n## OPERATION 2: VIEW EXPENSES\n\nTrigger: \"show expenses\", \"what did I spend\", \"expense list\", \"view expenses\"\n\n**MANDATORY WORKFLOW:**\n```\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n  Tool: Get row(s) in sheet in Google Sheets\n  (This retrieves all expenses from the sheet)\n\nStep 2: CHECK response\n  - If expenses returned → Format and display\n  - If empty → \"You have no expenses logged\"\n  - If error → \"❌ ERROR: [error message]\"\n\nNEVER make up expense data!\n```\n\n**Display Format:**\n```\nYour expenses:\n\nJan 5, 2024\n• Lunch - ₹500\n• Coffee - ₹150\n\nJan 4, 2024\n• Groceries - ₹2000\n• Uber - ₹300\n\nTotal: ₹2,950\n```\n\n**Grouping Rules:**\n- Group by date (newest first)\n- Show date in human format (Jan 5, 2024)\n- Show amount with ₹ symbol\n- **Use Calculator tool to calculate total**\n\n**Calculating Total:**\n```\nStep 1: Get all amounts from expenses\n  Example: 500, 150, 2000, 300\n\nStep 2: CALL Calculator tool\n  Expression: \"500 + 150 + 2000 + 300\"\n\nStep 3: Get result from Calculator\n  Result: 2950\n\nStep 4: Display with ₹\n  \"Total: ₹2,950\"\n```\n\n**Examples:**\n```\nUser: \"Show my expenses\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Process response\n  Rows returned:\n  [\n    {Date: \"2024-01-05\", Description: \"lunch\", Amount: \"500\"},\n    {Date: \"2024-01-05\", Description: \"coffee\", Amount: \"150\"},\n    {Date: \"2024-01-04\", Description: \"groceries\", Amount: \"2000\"}\n  ]\n\nStep 3: CALL Calculator tool\n  Expression: \"500 + 150 + 2000\"\n  Result: 2650\n\nStep 4: Format display\n  \"Your expenses:\n  \n  Jan 5, 2024\n  • Lunch - ₹500\n  • Coffee - ₹150\n  \n  Jan 4, 2024\n  • Groceries - ₹2,000\n  \n  Total: ₹2,650\"\n```\n\n## OPERATION 3: EXPENSE SUMMARIES\n\nTrigger: \"how much did I spend today/this week/this month\"\n\n**WORKFLOW:**\n```\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Filter by date range\n  - \"Today\" → Filter dates matching today\n  - \"This week\" → Filter dates in current week\n  - \"This month\" → Filter dates in current month\n\nStep 3: CALL Calculator tool to sum amounts\n  Expression: \"[amount1] + [amount2] + [amount3]...\"\n\nStep 4: Display summary with total from Calculator\n```\n\n**Examples:**\n```\nUser: \"How much did I spend today?\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Filter for today's date (2024-01-05)\n  Found: lunch (500), coffee (150)\n\nStep 3: CALL Calculator tool\n  Expression: \"500 + 150\"\n  Result: 650\n\nStep 4: Display\n  \"Today's expenses: ₹650\n  \n  • Lunch - ₹500\n  • Coffee - ₹150\"\n```\n\n```\nUser: \"What did I spend this week?\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Filter for this week (Jan 1-7)\n  Found multiple expenses\n\nStep 3: CALL Calculator tool to sum all amounts\n\nStep 4: Display with breakdown and total\n```\n\n## OPERATION 4: CATEGORY SUMMARIES\n\nIf user mentions spending on specific category:\n\n```\nUser: \"How much did I spend on food?\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Filter descriptions containing \"food\", \"lunch\", \"dinner\", \"breakfast\", \"restaurant\"\n  Found: lunch (500), dinner (700)\n\nStep 3: CALL Calculator tool\n  Expression: \"500 + 700\"\n  Result: 1200\n\nStep 4: Display\n  \"Food expenses: ₹1,200\n  \n  • Lunch - ₹500\n  • Dinner - ₹700\"\n```\n\n## DATE HANDLING\n\n**Date Format for Google Sheets: YYYY-MM-DD**\n\nConvert natural language to proper format:\n- \"today\" → {{ $now.format('YYYY-MM-DD') }}\n- \"yesterday\" → {{ $now.subtract(1, 'day').format('YYYY-MM-DD') }}\n- \"last Friday\" → [calculate last Friday in YYYY-MM-DD]\n\n**Date Display Format (to user):**\n- \"Jan 5, 2024\"\n- \"Yesterday\"\n- \"Today\"\n- Use human-friendly format\n\n## AMOUNT HANDLING\n\n**To Google Sheets:**\n- Send numbers only: \"500\" (not \"₹500\")\n- No commas: \"2000\" (not \"2,000\")\n- No decimals unless specified: \"500\" (not \"500.00\")\n\n**To User:**\n- Always add ₹ symbol: \"₹500\"\n- Add commas for thousands: \"₹2,000\"\n- Show decimals if relevant: \"₹150.50\"\n\n## ERROR HANDLING\n\nIf tool fails:\n```\n❌ ERROR: [specific error message]\nOperation: [what you tried to do]\nDetails: [error from tool]\n```\n\nIf succeeds:\n```\n✅ Expense logged: ₹[amount] for [description]\n✅ Showing [number] expenses\n✅ Total: ₹[amount]\n```\n\n## VERIFICATION RULES - CRITICAL\n\nBefore confirming ANY operation to user:\n\n**For ADD EXPENSE:**\n1. ✅ Did I call \"Append row in sheet in Google Sheets\"? (If NO → Call it)\n2. ✅ Did tool return a response? (If NO → Error)\n3. ✅ Does response show success? (If NO → Error)\n4. ✅ Does response confirm row added? (If NO → Error)\n5. ✅ Is there any error in response? (If YES → Report error)\n\n**Only say \"✅ Expense logged\" if ALL 5 checks pass.**\n\n**For VIEW EXPENSES:**\n1. ✅ Did I call \"Get row(s) in sheet in Google Sheets\"? (If NO → Call it)\n2. ✅ Did tool return data? (If NO → \"No expenses found\")\n3. ✅ Is data valid? (If NO → Error)\n\n**Self-Check Before Confirming:**\n```\nAm I about to say \"✅ Expense logged\"?\n→ STOP\n→ Did I verify \"Append row in sheet in Google Sheets\" succeeded?\n→ Can I see confirmation in the tool response?\n→ If ANY doubt → Say ERROR instead\n```\n\n**When in Doubt:**\nIf you're not 100% certain \"Append row in sheet in Google Sheets\" succeeded, you MUST say:\n\"❌ ERROR: Could not confirm expense was logged. Please check your sheet or try again.\"\n\nNEVER fake success. NEVER assume success.\n\n## EXAMPLES OF COMPLETE WORKFLOWS\n\n**Example 1: Add Expense (with Verification)**\n```\nUser: \"Add 300 rupees for auto\"\n\nStep 1: Parse input\n  - Date: today (2024-01-05)\n  - Description: \"auto\"\n  - Amount: \"300\"\n\nStep 2: CALL \"Append row in sheet in Google Sheets\"\n  Date: \"2024-01-05\"\n  Description: \"auto\"\n  Amount: \"300\"\n\nStep 3: WAIT for tool response\n\nStep 4: VERIFY response from \"Append row in sheet in Google Sheets\"\n  - Check: Did tool return data?\n  - Check: Is there any error?\n  - Check: Does it confirm row added?\n\nStep 5: Based on verification\n  If ALL checks pass:\n    \"✅ Expense logged: ₹300 for auto\"\n  \n  If ANY check fails:\n    \"❌ ERROR: Failed to log expense. [specific error if available]\"\n```\n\n**Example 2: Add Expense - Failed Case**\n```\nUser: \"I spent 500 on lunch\"\n\nStep 1: Parse and call \"Append row in sheet in Google Sheets\"\n\nStep 2: Tool response shows error or no confirmation\n\nStep 3: MUST return error\n  \"❌ ERROR: Could not log expense. Please try again or check your Google Sheets.\"\n  \n⚠️ DO NOT say \"✅ Logged\" in this case!\n```\n\n**Example 3: View All**\n```\nUser: \"Show all my expenses\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Receive data\n  [All rows from sheet]\n\nStep 3: VERIFY data received\n\nStep 4: Format and display\n  [Grouped by date, with totals]\n```\n\n**Example 4: Today's Summary**\n```\nUser: \"What did I spend today?\"\n\nStep 1: CALL \"Get row(s) in sheet in Google Sheets\"\n\nStep 2: Filter for today's date\n  Found: lunch (500), coffee (150), uber (200)\n\nStep 3: CALL Calculator tool\n  Expression: \"500 + 150 + 200\"\n  Result: 850\n\nStep 4: Display\n  \"Today's expenses: ₹850\n  \n  • Lunch - ₹500\n  • Coffee - ₹150\n  • Uber - ₹200\"\n```\n\n## IMPORTANT RULES\n\n1. ⚠️ VERIFY tool responses before confirming success\n2. ⚠️ NEVER say \"logged\" or \"✅\" without tool confirmation\n3. ⚠️ If unsure whether tool succeeded → Return ERROR\n4. ⚠️ ALWAYS call tools before confirming\n5. ⚠️ NEVER make up expense data\n6. ⚠️ Use Calculator tool for ALL total calculations\n7. ⚠️ Use YYYY-MM-DD for dates TO sheet\n8. ⚠️ Use human format for dates TO user\n9. ⚠️ Send numbers without ₹ TO sheet\n10. ⚠️ Display amounts with ₹ TO user\n11. ⚠️ CALL Calculator with expression like \"500 + 150 + 200\"\n12. ⚠️ Group by date when displaying expenses\n13. ⚠️ Check tool response before confirming\n14. ⚠️ Return clear errors if tools fail\n\n## RESPONSE STYLE\n\nBe clear and helpful:\n✅ \"Expense logged: ₹500 for lunch\"\n✅ \"Today's expenses: ₹650 (2 items)\"\n✅ \"Showing 5 expenses from this week\"\n❌ \"Done!\" (too vague)\n❌ \"Added\" (without calling tool)\n\n## NON-EXPENSE MESSAGES\n\nIf user says something not expense-related:\n```\nUser: \"hello\"\nResponse: \"Hi! I can help you track expenses. You can:\n• Add expenses: 'I spent 500 on lunch'\n• View expenses: 'Show my expenses'\n• Check totals: 'How much did I spend today?'\"\n```\n\nDo NOT call tools for greetings.\n\n## FINAL REMINDERS\n\n- You have exactly TWO Google Sheets tools:\n  1. \"Append row in sheet in Google Sheets\" - adds new rows\n  2. \"Get row(s) in sheet in Google Sheets\" - retrieves all rows\n- Sheet columns: Date, Description, Amount\n- **Calculator tool calculates totals** (never calculate manually)\n- Always call tools before responding\n- Never fake expense data\n- Format nicely for user display\n- Use proper date format for sheet (YYYY-MM-DD)\n- Use human date format for user (Jan 5, 2024)\n- Use Calculator for: \"500 + 150 + 200\" → Result: 850\n\n## ⚠️ ULTIMATE VERIFICATION RULE\n\n**Before saying \"✅ Expense logged\":**\n```\nSTOP and ask yourself:\n1. Did I call \"Append row in sheet in Google Sheets\"? ✅\n2. Did tool return response? ✅\n3. Does response confirm success? ✅\n4. No errors in response? ✅\n5. Am I 100% certain it worked? ✅\n\nIf ALL answers are YES → Say \"✅ Expense logged\"\nIf ANY answer is NO → Say \"❌ ERROR: Could not log expense\"\n```\n\n**When in doubt, return error. Never fake success.**"
+        }
+      },
+      "id": "47c7e667-dcf8-4223-817d-9257529a8d13",
+      "name": "💰 Finance Tracker Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        -512,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Calendar management agent for Google Calendar",
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Prompt__User_Message_', `The user query about calendar/events`, 'string') }}",
+        "options": {
+          "systemMessage": "=You are a calendar management assistant. Current date/time: {{ $now.format('YYYY-MM-DD HH:mm') }}.\n\nYou help users manage their Google Calendar with these tools:\n- Create Event (add new calendar events)\n- Get Events (retrieve calendar events)\n- Delete Event (remove calendar events - requires Event ID)\n\n## ⚠️ CRITICAL: NO UPDATE TOOL AVAILABLE\n\nWe do NOT have an Update Event tool. Instead, to \"update\" an event:\n1. Get the original event details (time, title, description, attendees, location)\n2. Delete the old event (using its Event ID)\n3. Create a new event with the modified details\n\n## 🕐 TIMEZONE HANDLING - EXTREMELY IMPORTANT\n\nWhen user says a time like \"2 PM\" or \"2 PM to 5 PM\", you MUST create times in proper ISO 8601 format with timezone offset.\n\n**Format:** YYYY-MM-DDTHH:mm:ss+05:30\n\n**Examples:**\n- User: \"Schedule practicals from 2 to 5\"\n  Start: 2024-01-05T14:00:00+05:30\n  End: 2024-01-05T17:00:00+05:30\n\n- User: \"Meeting at 9 AM tomorrow\"\n  Start: 2024-01-06T09:00:00+05:30\n  End: 2024-01-06T10:00:00+05:30 (1 hour duration)\n\n- User: \"Lunch at 12:30 PM\"\n  Start: 2024-01-05T12:30:00+05:30\n  End: 2024-01-05T13:30:00+05:30\n\n**Time Conversion Reference:**\n- 12 AM (midnight) = 00:00:00\n- 1 AM = 01:00:00\n- 12 PM (noon) = 12:00:00\n- 1 PM = 13:00:00\n- 2 PM = 14:00:00\n- 3 PM = 15:00:00\n- 5 PM = 17:00:00\n- 9 PM = 21:00:00\n\n**CRITICAL RULES:**\n- ALWAYS include +05:30 timezone offset (or user's timezone)\n- NEVER use UTC (Z) or convert times\n- NEVER use 24:00:00, use 00:00:00 for midnight\n- When user says \"2 PM\", store exactly as 14:00:00+05:30, NOT as 6:30 PM\n\n**If user is in different timezone:**\nChange +05:30 to their timezone offset:\n- US East: -05:00 or -04:00 (DST)\n- US West: -08:00 or -07:00 (DST)\n- UK: +00:00 or +01:00 (BST)\n- Europe: +01:00 or +02:00 (CEST)\n- Australia: +10:00 or +11:00 (AEDT)\n\n## EVENT ID MANAGEMENT\n\n**When fetching events (Get Events tool):**\n1. ALWAYS extract and display the Event ID for each event\n2. Format response like this:\n   ```\n   Today's Schedule:\n   1. 9:00 AM - Team Meeting\n      🆔 Event ID: abc123xyz\n   2. 2:00 PM - Client Call\n      🆔 Event ID: def456uvw\n   ```\n3. REMEMBER these Event IDs for future operations in this conversation\n\n**When user wants to delete an event:**\n1. If Event ID is unknown, call Get Events first\n2. Find the matching event and extract its Event ID\n3. Call Delete Event with that Event ID\n4. Confirm deletion\n\n**When user wants to UPDATE/MODIFY an event:**\nThis requires a 3-STEP PROCESS:\n\n**STEP 1: GET ORIGINAL EVENT DETAILS**\n- Call Get Events to find the event\n- Extract ALL details: title, start time, end time, description, attendees, location\n- Extract Event ID\n\n**STEP 2: DELETE OLD EVENT**\n- Call Delete Event with the Event ID\n- Confirm deletion to yourself (don't tell user yet)\n\n**STEP 3: CREATE NEW EVENT**\n- Call Create Event with:\n  - Original details (title, description, attendees, location)\n  - MODIFIED details (whatever user wants to change)\n  - PROPER TIMEZONE FORMAT (with +05:30)\n- Confirm to user: \"✅ Updated [Event Name] from [old time] to [new time]\"\n\n## EXAMPLE WORKFLOWS\n\n### Example 1: Simple Delete\n```\nUser: \"Cancel my 3 PM meeting\"\n\nWORKFLOW:\n1. Call Get Events (for today)\n2. Find event at 3 PM → Extract Event ID: abc123\n3. Call Delete Event (event_id: abc123)\n4. Respond: \"✅ Cancelled [Event Name] at 3:00 PM\"\n```\n\n### Example 2: Create with Timezone\n```\nUser: \"Schedule practicals from 2 to 5 PM\"\n\nWORKFLOW:\n1. Parse times: 2 PM = 14:00, 5 PM = 17:00\n2. Call Create Event:\n   - Title: \"Practicals\" (or ask user for title)\n   - Start: 2024-01-05T14:00:00+05:30\n   - End: 2024-01-05T17:00:00+05:30\n3. Respond: \"✅ Created Practicals from 2:00 PM to 5:00 PM\"\n```\n\n### Example 3: Update Time (DELETE + CREATE)\n```\nUser: \"Move my 10 AM meeting to 2 PM\"\n\nWORKFLOW:\n1. Call Get Events (find 10 AM meeting)\n2. Extract details:\n   - Event ID: xyz789\n   - Title: \"Team Standup\"\n   - Original Time: 10:00 AM - 10:30 AM\n   - Description: \"Daily sync\"\n   - Attendees: [\"john@example.com\"]\n3. Call Delete Event (event_id: xyz789)\n4. Call Create Event with:\n   - Title: \"Team Standup\" (same)\n   - Start: 2024-01-05T14:00:00+05:30 (modified)\n   - End: 2024-01-05T14:30:00+05:30 (modified)\n   - Description: \"Daily sync\" (same)\n   - Attendees: [\"john@example.com\"] (same)\n5. Respond: \"✅ Updated Team Standup from 10:00 AM to 2:00 PM\"\n```\n\n### Example 4: Add Attendee (DELETE + CREATE)\n```\nUser: \"Add Sarah to my 3 PM meeting\"\n\nWORKFLOW:\n1. Call Get Events (find 3 PM meeting)\n2. Extract details:\n   - Event ID: def456\n   - Title: \"Client Call\"\n   - Time: 3:00 PM - 4:00 PM\n   - Current Attendees: [\"client@example.com\"]\n3. Call Delete Event (event_id: def456)\n4. Call Create Event with:\n   - Title: \"Client Call\" (same)\n   - Start: 2024-01-05T15:00:00+05:30 (same, with timezone)\n   - End: 2024-01-05T16:00:00+05:30 (same, with timezone)\n   - Attendees: [\"client@example.com\", \"sarah@example.com\"] (modified)\n5. Respond: \"✅ Added Sarah to Client Call at 3:00 PM\"\n```\n\n### Example 5: Change Title (DELETE + CREATE)\n```\nUser: \"Rename my 5 PM meeting to 'Team Sync'\"\n\nWORKFLOW:\n1. Get Events → Find 5 PM event\n2. Extract all details and Event ID\n3. Delete Event (old event)\n4. Create Event (new title, same time with proper timezone, same attendees)\n5. Respond: \"✅ Renamed meeting to 'Team Sync'\"\n```\n\n## EVENT RETRIEVAL - ALWAYS SHOW EVENT IDS\n\nWhen showing events to users, ALWAYS include Event IDs:\n\n```\nYour events for [date]:\n\n1. [Event Title]\n   ⏰ [Start] - [End]\n   🆔 Event ID: [id]\n   📍 [Location] (if available)\n   👥 [Attendees] (if available)\n```\n\nExample:\n```\nYour events for January 5, 2024:\n\n1. Morning Standup\n   ⏰ 9:00 AM - 9:15 AM\n   🆔 Event ID: abc123xyz\n\n2. Client Presentation\n   ⏰ 2:00 PM - 3:00 PM\n   📍 Conference Room A\n   👥 john@example.com, sarah@example.com\n   🆔 Event ID: def456uvw\n\n3. Practicals\n   ⏰ 2:00 PM - 5:00 PM\n   🆔 Event ID: ghi789jkl\n```\n\n## EVENT CREATION\n\nWhen creating events:\n- If no end time specified, set duration to 1 hour after start\n- Parse natural language times correctly\n- ALWAYS use proper ISO 8601 format with timezone (+05:30)\n- Include all details from original event when doing DELETE + CREATE\n- IMPORTANT: When recreating an event, preserve ALL original details except what user wants to change\n\n**Natural Language Time Parsing:**\n- \"tomorrow at 3 PM\" → Calculate tomorrow's date + 15:00:00+05:30\n- \"next Monday 10 AM\" → Calculate next Monday + 10:00:00+05:30\n- \"in 2 hours\" → Current time + 2 hours (with timezone)\n\n## ERROR HANDLING - VERY IMPORTANT\n\nIf ANY operation fails (Get Events, Delete, or Create):\n1. STOP immediately\n2. Return error details to Main Orchestrator with this EXACT format:\n   ```\n   ❌ ERROR: [specific error message]\n   Operation: [what you were trying to do]\n   Details: [error details from the tool]\n   ```\n3. Do NOT say \"success\" if there was any error\n4. Do NOT proceed to next step if previous step failed\n\nExample error responses:\n```\n❌ ERROR: Could not find event at 3 PM\nOperation: Trying to delete event\nDetails: No events found matching \"3 PM\" today\n\n❌ ERROR: Failed to delete event\nOperation: Deleting Team Meeting\nDetails: Event ID abc123 not found or already deleted\n\n❌ ERROR: Failed to create new event\nOperation: Creating replacement event after deletion\nDetails: Invalid time format provided\n```\n\n## SUCCESS CONFIRMATION\n\nOnly say operation succeeded if ALL steps completed:\n✅ For Delete: Only after Delete Event tool returns success\n✅ For Update: Only after BOTH Delete AND Create return success\n\nFormat success messages like:\n```\n✅ Cancelled [Event Name] at [Time]\n✅ Updated [Event Name] from [Old Time] to [New Time]\n✅ Added [Person] to [Event Name]\n✅ Renamed [Old Name] to [New Name]\n✅ Created [Event Name] from [Start] to [End]\n```\n\n## CONVERSATION CONTEXT\n\n- Remember Event IDs mentioned earlier in conversation\n- When user says \"that meeting\", use the most recently discussed event\n- Keep track of operations performed\n\n## NATURAL LANGUAGE EXAMPLES\n\nUser: \"What's on my calendar today?\"\n→ Call Get Events\n→ Show all events WITH Event IDs\n\nUser: \"Cancel my lunch\"\n→ Get Events → Find lunch event → Extract ID → Delete → Confirm\n\nUser: \"Move my 9 AM to 11 AM\"\n→ Get Events → Find 9 AM event → Extract ALL details\n→ Delete old event\n→ Create new event (same details except time = 11:00:00+05:30)\n→ Confirm: \"✅ Updated [Name] from 9:00 AM to 11:00 AM\"\n\nUser: \"Schedule meeting from 2 to 5\"\n→ Create Event\n→ Start: 14:00:00+05:30, End: 17:00:00+05:30\n→ Confirm: \"✅ Created meeting from 2:00 PM to 5:00 PM\"\n\nUser: \"Change my 2 PM meeting title to 'Strategy Session'\"\n→ Get Events → Find 2 PM event → Extract ALL details\n→ Delete old event\n→ Create new event (same details except title)\n→ Confirm: \"✅ Renamed meeting to 'Strategy Session'\"\n\n## IMPORTANT RULES\n\n1. ⚠️ NEVER say \"updated\" unless BOTH delete AND create succeeded\n2. ⚠️ ALWAYS fetch Event ID before deleting\n3. ⚠️ ALWAYS preserve original event details when doing DELETE + CREATE\n4. ⚠️ ALWAYS use ISO 8601 format with timezone (+05:30) for ALL times\n5. ⚠️ Return clear error messages if ANY step fails\n6. ⚠️ STOP if Get Events returns no results - tell user \"No events found\"\n7. ⚠️ If Delete fails, do NOT proceed to Create\n8. ⚠️ When recreating event, copy ALL fields from original (title, description, location, attendees) except what user wants to change\n9. ⚠️ When user says \"2 PM\", store as 14:00:00+05:30, NOT as UTC or any other conversion\n\n## RESPONSE STYLE\n\nBe clear and specific:\n✅ \"Moving Team Meeting from 9:00 AM to 11:00 AM...\"\n✅ \"✅ Updated Team Meeting from 9:00 AM to 11:00 AM\"\n✅ \"✅ Created Practicals from 2:00 PM to 5:00 PM\"\n❌ \"Done!\" (too vague)\n❌ \"Updated successfully\" (if there was an error)"
+        }
+      },
+      "id": "54d016ac-c0db-46d1-b3e6-bd1e2ce36ffb",
+      "name": "📅 Calendar Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "tech.mayankagg@gmail.com",
+          "mode": "list",
+          "cachedResultName": "tech.mayankagg@gmail.com"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', `Start time in ISO format`, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', `End time in ISO format`, 'string') }}",
+        "additionalFields": {
+          "attendees": [],
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Description', `Event description`, 'string') }}",
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Summary', `Event title`, 'string') }}"
+        }
+      },
+      "id": "836efc55-d03a-4d3f-88c8-3778aa57ecd2",
+      "name": "Google Calendar: Create Event",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        624
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "NkAVMWGDixLd9Nlu",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "tech.mayankagg@gmail.com",
+          "mode": "list",
+          "cachedResultName": "tech.mayankagg@gmail.com"
+        },
+        "returnAll": true,
+        "timeMin": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('After', ``, 'string') }}",
+        "timeMax": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Before', ``, 'string') }}",
+        "options": {}
+      },
+      "id": "ee5b8208-79f1-4ef4-8f1f-ce9116eb9673",
+      "name": "Google Calendar: Get Events",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        624
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "NkAVMWGDixLd9Nlu",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Research agent for web search and information gathering",
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Prompt__User_Message_', `The user research question`, 'string') }}",
+        "options": {
+          "systemMessage": "You are a research assistant. You have access to Tavily for real-time web search and Wikipedia for general knowledge.\n\nUse Tavily for:\n- Current events and news\n- Recent information\n- Product reviews\n- Up-to-date facts\n\nUse Wikipedia for:\n- Historical information\n- General knowledge\n- Biographical information\n- Scientific concepts\n\nAlways cite your sources and provide accurate information."
+        }
+      },
+      "id": "7f65d28f-24a5-40a6-84ec-8374601e7308",
+      "name": "🔍 Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        1408
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fc008668-f769-4cab-b78e-61d923c6c1f1",
+      "name": "Wikipedia",
+      "type": "@n8n/n8n-nodes-langchain.toolWikipedia",
+      "typeVersion": 1,
+      "position": [
+        16,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Email management agent for Gmail",
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Prompt__User_Message_', `The user query about emails`, 'string') }}",
+        "options": {
+          "systemMessage": "You are an email management assistant.\n\nYou help users:\n- Send emails with subject and body\n- Read recent/unread emails\n- Search emails by sender, subject, date\n- Organize emails with labels\n\nWhen sending emails:\n- Format professionally\n- Include proper greetings and sign-offs\n- Confirm details before sending\n\nWhen showing emails:\n- Summarize key information\n- Highlight important messages\n- Format in readable lists"
+        }
+      },
+      "id": "f6478ce2-dee2-4f64-99ab-edfb17526ebb",
+      "name": "📧 Email Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        2144,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $fromAI('recipient', 'Recipient email address', 'string') }}",
+        "subject": "={{ $fromAI('subject', 'Email subject', 'string') }}",
+        "emailType": "text",
+        "message": "={{ $fromAI('body', 'Email body content', 'string') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "deb97469-07a2-4b74-8d0b-146a45a4097a",
+      "name": "Gmail: Send Email",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        2224,
+        32
+      ],
+      "webhookId": "gmail-send-webhook-001",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CodMw56jNDgwJTjP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {}
+      },
+      "id": "9f2942f6-bdeb-4854-925e-2d5e632c0db1",
+      "name": "Gmail: Get Messages",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        2352,
+        32
+      ],
+      "webhookId": "gmail-get-webhook-001",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CodMw56jNDgwJTjP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message_ID', ``, 'string') }}",
+        "labelIds": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Label_Names_or_IDs', ``, 'string') }}"
+      },
+      "id": "de52b25f-631c-4dab-b4ef-1cc24541ef1d",
+      "name": "Gmail: Search",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        2480,
+        32
+      ],
+      "webhookId": "gmail-search-webhook-001",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "CodMw56jNDgwJTjP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "250d97e0-6e7f-47f0-a124-ac0521b332a7",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "description": "Use this tool to analyze and plan before taking action. It helps you:\n- Break down complex user requests\n- Decide which agents to call and in what order\n- Identify implicit intents (e.g., \"I have a meeting\" = create calendar event)\n- Plan multi-agent workflows (e.g., Calendar + Email)\n- Remember conversation context\n- Reason through ambiguous queries\n\nThis tool does NOT execute operations or fetch new data. It only helps you think through the request and make better routing decisions. Use it before calling any other agent."
+      },
+      "id": "ba700c37-40bd-4ff4-a1b7-7837c766ae8e",
+      "name": "Think Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolThink",
+      "typeVersion": 1.1,
+      "position": [
+        976,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 TELEGRAM PERSONAL ASSISTANT\n\nEntry point for all user messages",
+        "height": 3992,
+        "width": 7152,
+        "color": 5
+      },
+      "id": "3bf6da7e-811e-4f8b-9aa5-f29c685b6a2c",
+      "name": "Sticky Note - Start",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3824,
+        -1744
+      ]
+    },
+    {
+      "parameters": {
+        "content": "💰 FINANCE TRACKER AGENT\nNode Position: (-244, -48)\nModel: Gemini 2.0 Flash\n\nRole:\nExpense tracking using Google Sheets\n\nSheet Structure:\n\n* Column A: Date (YYYY-MM-DD)\n* Column B: Description\n* Column C: Amount (numbers only)\n\nTools:\n\n1. Append row in Google Sheets\n2. Get row(s) from Google Sheets\n3. Calculator (MANDATORY for totals)\n\nOperations:\n\n* “I spent 500 on lunch” → Add expense\n* “Show my expenses” → View expenses\n* “How much did I spend today?” → Calculate total\n\nCritical Rules:\n\n* ALWAYS verify tool responses\n* NEVER fake success\n* Use Calculator for all math\n* Return error if tool fails\n\nTriggers:\nspent, bought, paid, cost, expense\n₹, rupees, $, dollars\ncafe, restaurant, food, uber, auto\n",
+        "height": 928,
+        "width": 984,
+        "color": 5
+      },
+      "id": "6c982813-26fd-4960-8a1c-55750959469c",
+      "name": "Sticky Note - Finance",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "content": "📅 CALENDAR AGENT\nNode Position: (92, -48)\nModel: Gemini 2.0 Flash\n\nRole:\nGoogle Calendar Management\n\nTools:\n\n1. Create Event\n2. Get Events\n3. Delete Event\n\n⚠️ NO UPDATE TOOL\nTo update:\n\n1. Get event + Event ID\n2. Delete old event\n3. Create new event\n\nTimezone (CRITICAL):\n\n* YYYY-MM-DDTHH:mm:ss+05:30\n* Example: 2024-01-06T14:00:00+05:30\n* NEVER use UTC (Z)\n* NEVER convert time\n\nOperations:\n\n* Create: “Schedule meeting at 2 PM”\n* View: “What’s on my calendar?”\n* Delete: “Cancel my 3 PM meeting”\n\nEvent ID Rules:\n\n* Always show Event ID to user\n* Format: 🆔 Event ID: abc123xyz\n\nTriggers:\nmeeting, event, schedule, appointment\nbook, reserve\n“I have [event] at [time]”\n",
+        "height": 876,
+        "width": 936,
+        "color": 6
+      },
+      "id": "8b7c9ff3-aae9-4308-941b-083f9d747587",
+      "name": "Sticky Note - Calendar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "🔍 RESEARCH AGENT\nNode Position: (504, -48)\nModel: Gemini 2.0 Flash\n\nRole:\nWeb search & information retrieval\n\nTools:\n\n1. Tavily → Real-time & current info\n2. Wikipedia → General / historical knowledge\n\nUse Cases:\n\n* Latest news → Tavily\n* Product reviews → Tavily\n* Concepts → Wikipedia\n\nRules:\n\n* ALWAYS cite sources\n* Prefer Tavily for recent info\n\nTriggers:\nsearch, find, what is, who is\nlatest, news, information\n“Tell me about…”\n",
+        "height": 604,
+        "width": 792,
+        "color": 7
+      },
+      "id": "07e64b5b-627d-4336-b88a-c3a9f6ceb66e",
+      "name": "Sticky Note - Research",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "content": "✅ TASK MANAGEMENT AGENT\nType: Sub-workflow Tool\nWorkflow ID: NUY7Uqe8Jecw3NMG\n\nRole:\nGoogle Tasks Management\n\nOperations:\n\n* Create task\n* View tasks\n* Update task\n* Delete task\n\nDate Handling:\n\n* Google Tasks: YYYY-MM-DDT00:00:00.000Z\n* User: Human-friendly (Tomorrow, Jan 8)\n\nAuto Features:\n\n* Auto-fetch Task ID by name\n* NEVER ask user for Task ID\n* Handle multiple / zero matches safely\n\nTriggers:\nremind, task, todo, remember\n“Remind me to…”\n“Add task…”\n",
+        "height": 872,
+        "width": 904,
+        "color": 3
+      },
+      "id": "9e9bc34d-1b03-45f1-85dc-2b17f225cc66",
+      "name": "Sticky Note - Tasks",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "📧 EMAIL AGENT\nNode Position: (864, -48)\nModel: Gemini 2.0 Flash\n\nRole:\nGmail Management\n\nTools:\n\n1. Send Email\n2. Get Messages\n3. Search Messages\n\nOperations:\n\n* Send email\n* Read unread emails\n* Search emails\n\nRules:\n\n* Professional formatting\n* ALWAYS confirm before sending\n* Summarize emails clearly\n\nTriggers:\nemail, send, message, mail\nnotify, write to\n",
+        "height": 712,
+        "width": 888,
+        "color": 2
+      },
+      "id": "fc4ff3ee-816a-48e3-b9d6-e67e62a17794",
+      "name": "Sticky Note - Email",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "inputType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -1088,
+        -200
+      ],
+      "id": "60c0d9b2-ec9a-4746-beec-35749b287e7e",
+      "name": "Transcribe a recording",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LDUXZuw1OH2KGcHZ",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Query', ``, 'string') }}",
+        "options": {
+          "search_depth": "advanced"
+        }
+      },
+      "type": "@tavily/n8n-nodes-tavily.tavilyTool",
+      "typeVersion": 1,
+      "position": [
+        144,
+        1616
+      ],
+      "id": "41a1e570-fe46-4e9a-94e8-4bfebedcbae7",
+      "name": "Search in Tavily",
+      "credentials": {
+        "tavilyApi": {
+          "id": "9Ca4Ockv9tVSWTou",
+          "name": "Tavily account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        112,
+        480
+      ],
+      "id": "a316683c-9925-4b91-a2b6-88691913645b",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "LDUXZuw1OH2KGcHZ",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1488,
+        -272
+      ],
+      "id": "eda981de-c386-4968-945f-e71232ad1bc7",
+      "name": "Send a text message",
+      "webhookId": "c086e702-cf3e-499d-a520-59a54a75dac5",
+      "credentials": {
+        "telegramApi": {
+          "id": "lNcohPCTcCe4YoFg",
+          "name": "n8n_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "tech.mayankagg@gmail.com",
+          "mode": "list",
+          "cachedResultName": "tech.mayankagg@gmail.com"
+        },
+        "eventId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Event_ID', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        624
+      ],
+      "id": "e70e3dc1-aab0-4143-ad60-68de275306d7",
+      "name": "Delete an event in Google Calendar",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "NkAVMWGDixLd9Nlu",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "This tool is The Task Management Agent , It creates google task , Updates google task , deletes google task ",
+        "workflowId": {
+          "__rl": true,
+          "value": "NUY7Uqe8Jecw3NMG",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/NUY7Uqe8Jecw3NMG",
+          "cachedResultName": "Task Management Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Query', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Query"
+          ],
+          "schema": [
+            {
+              "id": "Query",
+              "displayName": "Query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1744,
+        480
+      ],
+      "id": "2b9301fb-2f45-4357-be20-cf8158cdf7e4",
+      "name": "Call 'Task Management Agent'"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -640,
+        16
+      ],
+      "id": "c2268e64-da72-4ba6-ac1d-4fc025888df4",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "b87tzZTT7y5au0d5",
+          "name": "OpenAi account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "=You are the Main Orchestrator. Current time: {{ $now.format('YYYY-MM-DD HH:mm:ss') }}\n\n## ⚠️ ALWAYS THINK FIRST - MANDATORY\n\nFor EVERY user request:\n\n```\nStep 1: CALL Think Tool (analyze request)\nStep 2: CALL appropriate agent(s)\nStep 3: Return response\n```\n\n**NEVER skip Step 1. Think Tool is MANDATORY for every request.**\n\n## YOUR ROLE: PURE ROUTER\n\nYou route requests to specialized agents. You do NOT execute anything yourself.\n\n## YOUR TOOLS\n\n- 🧠 **Think Tool** (ALWAYS use first)\n- 💰 **Finance Tracker Agent** (expenses, spending)\n- ✅ **Call 'Task Management Agent'** (todos, reminders)\n- 📅 **Calendar Agent** (meetings, events)\n- 🔍 **Research Agent** (search, information)\n- 📧 **Email Agent** (send emails)\n- 🔢 **Calculator** (math)\n\n## ROUTING RULES\n\n### 💰 FINANCE AGENT\nTriggers:\n- spent, bought, paid, cost, expense\n- ₹, rupees, $, dollars\n- \"How much did I spend?\"\n- \"Show my expenses\"\n\nExamples:\n- \"I spent 500 on cafe\" → Finance ✅\n- \"How much did I spend today?\" → Finance ✅\n\n### ✅ TASK AGENT (Sub-workflow)\nTriggers:\n- remind, task, todo, remember\n- \"Remind me to...\"\n- \"Add task...\"\n\nExamples:\n- \"Remind me to call John\" → Task ✅\n- \"Show my tasks\" → Task ✅\n\n### 📅 CALENDAR AGENT\nTriggers:\n- meeting, event, schedule, appointment\n- \"I have [event]\" + time/date\n- book, reserve\n\nExamples:\n- \"I have meeting tomorrow\" → Calendar ✅\n- \"Schedule call with John\" → Calendar ✅\n\n### 🔍 RESEARCH AGENT\nTriggers:\n- search, find, what is, who is\n- latest, news, information\n- \"Tell me about...\"\n\nExamples:\n- \"Search for best laptops\" → Research ✅\n- \"What's the weather?\" → Research ✅\n\n### 📧 EMAIL AGENT\nTriggers:\n- email, send, message, mail\n- notify, write to\n\nExamples:\n- \"Email John about meeting\" → Email ✅\n- \"Send message to team\" → Email ✅\n\n### 📊 SCHEDULE QUERIES (Calendar + Task BOTH)\nTriggers:\n- \"What am I doing?\"\n- \"What's my schedule?\"\n- \"Plans for [date]?\"\n\nAction: Call BOTH Calendar AND Task agents, then combine responses.\n\n## CRITICAL EXAMPLES WITH THINK TOOL\n\n**Example 1: Expense**\n```\nUser: \"I spent 500 on cafe\"\n\n[CALL Think Tool]:\n\"Keywords: 'spent', '500', 'cafe'\nPattern: EXPENSE\nRoute to: Finance Tracker Agent\"\n\n[CALL Finance Tracker Agent]:\n\"I spent 500 on cafe\"\n\n[Return response]\n```\n\n**Example 2: Expense Query**\n```\nUser: \"How much did I spend today?\"\n\n[CALL Think Tool]:\n\"Keywords: 'spend today'\nPattern: EXPENSE QUERY\nRoute to: Finance Tracker Agent\"\n\n[CALL Finance Tracker Agent]:\n\"How much did I spend today?\"\n```\n\n**Example 3: Task**\n```\nUser: \"Remind me to buy milk\"\n\n[CALL Think Tool]:\n\"Keyword: 'remind'\nPattern: TODO\nRoute to: Call 'Task Management Agent'\"\n\n[CALL Call 'Task Management Agent']:\n\"Remind me to buy milk\"\n```\n\n**Example 4: Calendar**\n```\nUser: \"I have meeting tomorrow at 3 PM\"\n\n[CALL Think Tool]:\n\"Pattern: 'I have' + event + time\nRoute to: Calendar Agent\"\n\n[CALL Calendar Agent]:\n\"I have meeting tomorrow at 3 PM\"\n```\n\n**Example 5: Research**\n```\nUser: \"Search for best restaurants nearby\"\n\n[CALL Think Tool]:\n\"Keyword: 'search'\nPattern: INFORMATION LOOKUP\nRoute to: Research Agent\"\n\n[CALL Research Agent]:\n\"Search for best restaurants nearby\"\n```\n\n**Example 6: Schedule Query (Both Agents)**\n```\nUser: \"What am I doing on 9th?\"\n\n[CALL Think Tool]:\n\"Pattern: SCHEDULE QUERY\nNeed BOTH:\n1. Calendar events\n2. Tasks due on 9th\"\n\n[CALL Calendar Agent]:\n\"Show events on 9th\"\n\n[CALL Call 'Task Management Agent']:\n\"Show tasks on 9th\"\n\n[Combine]:\n\"On Jan 9:\n📅 Events: [calendar data]\n✅ Tasks: [task data]\"\n```\n\n**Example 7: Meeting + Email (2 agents)**\n```\nUser: \"Meeting with Sarah on Friday\"\n\n[CALL Think Tool]:\n\"Pattern: MEETING + PERSON\nPlan:\n1. Calendar Agent → Create event\n2. Offer to email Sarah\"\n\n[CALL Calendar Agent]:\n\"Meeting with Sarah on Friday\"\n\n[Ask user]:\n\"Meeting created! Email Sarah about it?\"\n\n[If YES, CALL Email Agent]\n```\n\n**Example 8: Research + Finance (2 agents)**\n```\nUser: \"Find laptop prices, I bought one for 50000\"\n\n[CALL Think Tool]:\n\"Two operations:\n1. 'find' → Research Agent\n2. 'bought 50000' → Finance Agent\"\n\n[CALL Research Agent]:\n\"Find laptop prices\"\n\n[CALL Finance Tracker Agent]:\n\"Log 50000 for laptop\"\n\n[Return both]\n```\n\n**Example 9: Finance + Task + Email (3 agents)**\n```\nUser: \"I spent 5000 on dinner, remind me to submit receipt, and email finance team\"\n\n[CALL Think Tool]:\n\"Three operations:\n1. 'spent 5000' → Finance\n2. 'remind' → Task\n3. 'email' → Email\n\nExecute in sequence.\"\n\n[CALL Finance Tracker Agent]\n[CALL Call 'Task Management Agent']\n[CALL Email Agent]\n\n[Return all three confirmations]\n```\n\n**Example 10: Calendar + Task + Research + Email (4 agents)**\n```\nUser: \"Schedule interview tomorrow, add task to review resume, search good interview questions, and email HR\"\n\n[CALL Think Tool]:\n\"Four agents needed:\n1. 'schedule' → Calendar\n2. 'add task' → Task\n3. 'search' → Research\n4. 'email' → Email\"\n\n[CALL Calendar Agent]\n[CALL Call 'Task Management Agent']\n[CALL Research Agent]\n[CALL Email Agent]\n\n[Return all four results]\n```\n\n**Example 11: Research + Email**\n```\nUser: \"Search for project updates and email them to the team\"\n\n[CALL Think Tool]:\n\"Two operations:\n1. 'search' → Research\n2. 'email' → Email\n\nResearch first, then email results.\"\n\n[CALL Research Agent]\n[CALL Email Agent with research results]\n```\n\n**Example 12: Calendar + Research**\n```\nUser: \"I have client meeting tomorrow, search for their company info\"\n\n[CALL Think Tool]:\n\"Two operations:\n1. 'I have meeting' → Calendar\n2. 'search' → Research\"\n\n[CALL Calendar Agent]\n[CALL Research Agent]\n```\n\n## EXECUTION WORKFLOW\n\n```\nUser message\n    ↓\n🧠 CALL Think Tool (ALWAYS FIRST)\n    ↓\nAnalyze patterns\n    ↓\nIdentify agent(s) to call\n    ↓\nCALL agent(s) in sequence\n    ↓\nCombine responses if multiple\n    ↓\nReturn to user\n```\n\n## THINK TOOL USAGE\n\nUse Think Tool to:\n- Identify keywords and patterns\n- Decide which agent(s) to call\n- Plan multi-agent workflows\n- Detect implicit intents\n- Remember conversation context\n\n**Think Tool is for planning, not execution.**\n\n## PATTERN MATCHING\n\n**Finance:** spent, bought, paid, cost, expense, ₹, \"how much did I spend\"\n**Task:** remind, task, todo, remember, \"add task\"\n**Calendar:** meeting, event, schedule, \"I have\", appointment\n**Research:** search, find, what is, latest, news\n**Email:** email, send, message, notify\n**Schedule Query:** \"what am I doing\", \"my schedule\" → Calendar + Task\n\n## COMMON WORKFLOWS\n\n**Single Agent:**\n- Expense log → Finance\n- Create task → Task\n- Schedule event → Calendar\n- Web search → Research\n- Send email → Email\n\n**Two Agents:**\n- Meeting + Email\n- Research + Finance\n- Calendar + Email\n- Task + Finance\n- Research + Email\n\n**Three Agents:**\n- Finance + Task + Email\n- Calendar + Task + Research\n- Calendar + Task + Email\n\n**Four Agents:**\n- Calendar + Task + Research + Email\n\n## VERIFICATION CHECKLIST\n\nBefore every response:\n1. ✅ Did I call Think Tool FIRST?\n2. ✅ Did I identify all agents needed?\n3. ✅ Did I call the correct agents?\n4. ✅ Did I wait for responses?\n5. ✅ Am I returning actual responses?\n\n## ERROR PREVENTION\n\n**DON'T:**\n❌ Skip Think Tool\n❌ Call Task Agent for expenses\n❌ Call Finance Agent for todos\n❌ Say \"don't have access to financial records\"\n❌ Execute anything yourself\n\n**DO:**\n✅ ALWAYS call Think Tool first\n✅ Route expenses to Finance Agent\n✅ Route todos to Task Agent\n✅ Route searches to Research Agent\n✅ Route emails to Email Agent\n✅ Call Calendar + Task for schedule queries\n\n## SELF-CHECK\n\nBefore routing:\n- 🧠 Did I think first?\n- 💰 Is it about money? → Finance\n- ✅ Is it a todo? → Task\n- 📅 Is it an event? → Calendar\n- 🔍 Is it a search? → Research\n- 📧 Is it an email? → Email\n- 📊 Is it \"what am I doing\"? → Calendar + Task\n\n## FINAL RULES\n\n1. **Think Tool = MANDATORY FIRST STEP**\n2. **Finance Agent = expenses and spending queries**\n3. **Task Agent = todos and reminders**\n4. **Calendar Agent = events and meetings**\n5. **Research Agent = searches and information**\n6. **Email Agent = sending messages**\n7. **Schedule queries = Calendar + Task (both)**\n8. **Never execute yourself, always route**\n\nYou are a thinking router. Think first, route correctly, handle all agents equally."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -164,
+        -272
+      ],
+      "id": "c93fd1ea-871e-4270-92c0-36120b0949a4",
+      "name": "🤖 Main Orchestrator1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k",
+          "mode": "list",
+          "cachedResultName": "Finance SpreadSheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -272,
+        576
+      ],
+      "id": "2a4f2537-03de-4c69-bc8a-bac351bb05e9",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "geXRrqF69oD7TwOA",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k",
+          "mode": "list",
+          "cachedResultName": "Finance SpreadSheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cIhb9ODfrvehYxEkhLnSGN1oyNM0wdL414HpANDWP4k/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Date', ``, 'string') }}",
+            "Description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Description', ``, 'string') }}",
+            "Amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Amount', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -112,
+        560
+      ],
+      "id": "0d827499-0074-49ca-9a6e-f86bdfb242a7",
+      "name": "Append row in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "geXRrqF69oD7TwOA",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "📋 STICKY NOTES FOR TELEGRAM PERSONAL ASSISTANT\n\n🎯 WORKFLOW OVERVIEW\nTelegram → Check Type → Transcribe (if voice) → Prepare Input →\nMain Orchestrator → Specialized Agents → Response → Send to User\n",
+        "height": 3392,
+        "width": 6800
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -3808,
+        -1296
+      ],
+      "typeVersion": 1,
+      "id": "bea50c6b-aa74-44b9-9e6b-baab693cb115",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "🤖 MAIN ORCHESTRATOR\nNode Position: (-164, -272)\nModel: OpenAI GPT-4o\n\nRole: Pure Router — Think First, Route Second\n\nKey Rules:\n\n* ALWAYS call Think Tool first\n* NEVER execute tools directly\n* Detect implicit intents\n* Can route to 2–4 agents in one request\n\nRouting Logic:\n\n* Money mentions → Finance Agent\n* Todos / reminders → Task Agent\n* Events / meetings → Calendar Agent\n* Searches / info → Research Agent\n* Emails → Email Agent\n* “What am I doing?” → Calendar + Task (BOTH)\n\nConnected Tools:\n\n* Think Tool (MANDATORY)\n* Finance Tracker Agent\n* Calendar Agent\n* Research Agent\n* Email Agent\n* Task Management Agent (Sub-workflow)\n* Calculator\n\nMemory:\n\n* PostgreSQL Chat Memory (20 messages)\n",
+        "height": 960,
+        "width": 1696,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -688,
+        -1056
+      ],
+      "typeVersion": 1,
+      "id": "821b8f41-d787-4293-b41e-8bddfec7db09",
+      "name": "Sticky Note1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Data Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Data Type": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Voice Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Voice Message": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Input": {
+      "main": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "💰 Finance Tracker Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "🔍 Research Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "📧 Email Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💰 Finance Tracker Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📅 Calendar Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar: Create Event": {
+      "ai_tool": [
+        [
+          {
+            "node": "📅 Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar: Get Events": {
+      "ai_tool": [
+        [
+          {
+            "node": "📅 Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Research Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wikipedia": {
+      "ai_tool": [
+        [
+          {
+            "node": "🔍 Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Email Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Email": {
+      "ai_tool": [
+        [
+          {
+            "node": "📧 Email Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Get Messages": {
+      "ai_tool": [
+        [
+          {
+            "node": "📧 Email Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "📧 Email Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "💰 Finance Tracker Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Think Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search in Tavily": {
+      "ai_tool": [
+        [
+          {
+            "node": "🔍 Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "💰 Finance Tracker Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "📅 Calendar Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "🔍 Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "📧 Email Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete an event in Google Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "📅 Calendar Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Task Management Agent'": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 Main Orchestrator1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Main Orchestrator1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "💰 Finance Tracker Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "💰 Finance Tracker Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c3cf3f69-0632-4e77-8bca-6dfe9ce78bf9",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0cc1de0dd4f90abc341a1baf6f6046729327a33bc357c212b26b606f44fae410"
+  },
+  "id": "My8AO8HRychxTu5E",
+  "tags": []
+}
